@@ -1,7 +1,7 @@
 # HTTP file for testing APISIX standalone setup
 
 # Base URL for APISIX Admin API
-@admin_api = http://localhost:9080/apisix/admin
+@admin_api = http://localhost:9180/apisix/admin
 # Base URL for APISIX Proxy
 @proxy_api = http://localhost:9080
 
