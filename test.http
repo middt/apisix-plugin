@@ -8,17 +8,22 @@
 # Admin API Key (from conf/config.yaml)
 @admin_key = edd1c9f034335f136f87ad84b625c8f1
 
-### 1. Create/Update a Test Route
-# This route listens on /test-hello and uses the hello-world plugin.
-# It proxies requests to httpbin.org/get.
-PUT {{admin_api}}/routes/1
+### 3. Create a Route with Path Rewriting
+# This route combines the hello-world plugin with proxy-rewrite
+# to properly redirect to httpbin.org/get
+PUT {{admin_api}}/routes/3
 Content-Type: application/json
 X-API-KEY: {{admin_key}}
 
 {
-  "uri": "/test-hello",
+  "uri": "/api/get",
   "plugins": {
-    "hello-world": {}  # Enable the hello-world plugin
+    "hello-world": {
+      "message": "Hello from rewritten path!"
+    },
+    "proxy-rewrite": {
+      "uri": "/get"
+    }
   },
   "upstream": {
     "type": "roundrobin",
@@ -28,7 +33,6 @@ X-API-KEY: {{admin_key}}
   }
 }
 
-### 2. Send Request to the Test Route
-# Send a GET request to the /test-hello path defined above.
-# Check the response headers for "X-Hello-World" added by the plugin.
-GET {{proxy_api}}/test-hello 
+### Test Path Rewriting Route
+# This should return a 200 OK with the custom header
+GET http://localhost:9080/api/get
