@@ -1,0 +1,34 @@
+# HTTP file for testing APISIX standalone setup
+
+# Base URL for APISIX Admin API
+@admin_api = http://localhost:9080/apisix/admin
+# Base URL for APISIX Proxy
+@proxy_api = http://localhost:9080
+
+# Admin API Key (from conf/config.yaml)
+@admin_key = edd1c9f034335f136f87ad84b625c8f1
+
+### 1. Create/Update a Test Route
+# This route listens on /test-hello and uses the hello-world plugin.
+# It proxies requests to httpbin.org/get.
+PUT {{admin_api}}/routes/1
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/test-hello",
+  "plugins": {
+    "hello-world": {}  # Enable the hello-world plugin
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 2. Send Request to the Test Route
+# Send a GET request to the /test-hello path defined above.
+# Check the response headers for "X-Hello-World" added by the plugin.
+GET {{proxy_api}}/test-hello 
