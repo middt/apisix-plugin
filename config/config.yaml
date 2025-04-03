@@ -16,14 +16,63 @@
 #
 
 apisix:
-#  extra_lua_path: "/opt/?.lua"
+  extra_lua_path: "/usr/local/apisix/plugins/?.lua"
   node_listen: 9080              # APISIX listening port
   enable_ipv6: false
-  config_center: yaml               #1
+  config_center: etcd # Using etcd for configuration
+  admin_listen:
+    ip: 0.0.0.0
+    port: 9180
 
 plugins:
-  - error-log-logger
-  - opentelemetry                  #2
+  - api-breaker
+  - authz-keycloak
+  - basic-auth
+  - batch-requests
+  - consumer-restriction
+  - cors
+  # - dubbo-proxy
+  - echo
+  # - custom-header
+  # - error-log-logger
+  # - example-plugin
+  - fault-injection
+  - grpc-transcode
+  - hmac-auth
+  - http-logger
+  - ip-restriction
+  - jwt-auth
+  - kafka-logger
+  - key-auth
+  - limit-conn
+  - limit-count
+  - limit-req
+  # - log-rotate
+  # - node-status
+  - openid-connect
+  - prometheus
+  - proxy-cache
+  - proxy-mirror
+  - proxy-rewrite
+  - redirect
+  - referer-restriction
+  - request-id
+  - request-validation
+  - response-rewrite
+  - serverless-post-function
+  - serverless-pre-function
+  # - skywalking
+  - sls-logger
+  - syslog
+  - tcp-logger
+  - udp-logger
+  - uri-blocker
+  - wolf-rbac
+  - zipkin
+  - server-info
+  - traffic-split
+  # custom
+  - hello-world
   
 plugin_attr:
   opentelemetry:
