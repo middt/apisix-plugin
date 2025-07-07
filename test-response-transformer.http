@@ -1,0 +1,114 @@
+# HTTP file for testing APISIX standalone setup
+
+# Base URL for APISIX Admin API
+@admin_api = http://localhost:9180/apisix/admin
+# Base URL for APISIX Proxy
+@proxy_api = http://localhost:9080
+
+# Admin API Key (from conf/config.yaml)
+@admin_key = edd1c9f034335f136f87ad84b625c8f1
+
+### 1. Create/Update a Route with Response Transformer Plugin
+# This route uses the response-transformer plugin to forward 200 responses
+# to an external API and conditionally return the external API response
+PUT {{admin_api}}/routes/response-transform-test
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/transform-test",
+  "plugins": {
+    "response-transformer": {
+      "external_api_url": "https://httpbin.org/post",
+      "timeout": 10000,
+      "method": "POST",
+      "forward_headers": ["Authorization", "X-Request-ID"]
+    },
+    "proxy-rewrite": {
+      "uri": "/get"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 2. Test the Route - This should trigger the response transformer
+# Send a GET request to the route. If the upstream returns 200,
+# the plugin will forward the response to the external API
+GET {{proxy_api}}/transform-test/get
+
+### 3. Alternative Test - Create a route that returns 200 with JSON data
+PUT {{admin_api}}/routes/json-test
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/json-test",
+  "plugins": {
+    "response-transformer": {
+      "external_api_url": "https://httpbin.org/post",
+      "timeout": 5000,
+      "method": "POST"
+    },
+    "proxy-rewrite": {
+      "uri": "/get"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 4. Test JSON endpoint
+GET {{proxy_api}}/json-test/json
+
+### 5. Test with a different external API that might return non-200
+PUT {{admin_api}}/routes/error-test
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/error-test",
+  "plugins": {
+    "response-transformer": {
+      "external_api_url": "https://httpbin.org/status/404",
+      "timeout": 5000,
+      "method": "POST"
+    },
+    "proxy-rewrite": {
+      "uri": "/get"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 6. Test error scenario - external API returns 404
+GET {{proxy_api}}/error-test/get
+
+### 7. View Route Configuration
+GET {{admin_api}}/routes/response-transform-test
+X-API-KEY: {{admin_key}}
+
+### 8. Delete Test Routes (cleanup)
+DELETE {{admin_api}}/routes/response-transform-test
+X-API-KEY: {{admin_key}}
+
+###
+DELETE {{admin_api}}/routes/json-test
+X-API-KEY: {{admin_key}}
+
+###
+DELETE {{admin_api}}/routes/error-test
+X-API-KEY: {{admin_key}} 

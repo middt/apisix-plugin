@@ -73,6 +73,7 @@ plugins:
   - traffic-split
   # custom
   - hello-world
+  - response-transformer
   
 plugin_attr:
   opentelemetry:
