@@ -8,9 +8,9 @@
 # Admin API Key (from conf/config.yaml)
 @admin_key = edd1c9f034335f136f87ad84b625c8f1
 
-### 1. Create/Update a Route with Response Transformer Plugin
-# This route uses the response-transformer plugin to forward 200 responses
-# to an external API and conditionally return the external API response
+### 1. Create/Update a Route with Response Transformer Plugin (Notify Mode)
+# This route uses the response-transformer plugin to call an external API
+# in the access phase and then continue with the normal upstream request
 PUT {{admin_api}}/routes/response-transform-test
 Content-Type: application/json
 X-API-KEY: {{admin_key}}
@@ -22,6 +22,7 @@ X-API-KEY: {{admin_key}}
       "external_api_url": "https://httpbin.org/post",
       "timeout": 10000,
       "method": "POST",
+      "mode": "notify",
       "forward_headers": ["Authorization", "X-Request-ID"]
     },
     "proxy-rewrite": {
@@ -36,12 +37,45 @@ X-API-KEY: {{admin_key}}
   }
 }
 
-### 2. Test the Route - This should trigger the response transformer
-# Send a GET request to the route. If the upstream returns 200,
-# the plugin will forward the response to the external API
-GET {{proxy_api}}/transform-test/get
+### 2. Test the Route - Notify Mode
+# Send a GET request to the route. The plugin will call the external API
+# and then continue with the normal upstream request
+GET {{proxy_api}}/transform-test
+Authorization: Bearer test-token
+X-Request-ID: test-123
 
-### 3. Alternative Test - Create a route that returns 200 with JSON data
+### 3. Update Route to Replace Mode
+# In replace mode, the plugin skips the upstream and returns the external API response
+PUT {{admin_api}}/routes/response-transform-test
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/transform-test",
+  "plugins": {
+    "response-transformer": {
+      "external_api_url": "https://httpbin.org/post",
+      "timeout": 10000,
+      "method": "POST",
+      "mode": "replace",
+      "forward_headers": ["Authorization", "X-Request-ID"]
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 4. Test the Route - Replace Mode
+# The plugin will skip the upstream and return the external API response directly
+GET {{proxy_api}}/transform-test
+Authorization: Bearer test-token
+X-Request-ID: test-123
+
+### 5. Create JSON Test Route with POST request
 PUT {{admin_api}}/routes/json-test
 Content-Type: application/json
 X-API-KEY: {{admin_key}}
@@ -52,10 +86,8 @@ X-API-KEY: {{admin_key}}
     "response-transformer": {
       "external_api_url": "https://httpbin.org/post",
       "timeout": 5000,
-      "method": "POST"
-    },
-    "proxy-rewrite": {
-      "uri": "/get"
+      "method": "POST",
+      "mode": "replace"
     }
   },
   "upstream": {
@@ -66,10 +98,17 @@ X-API-KEY: {{admin_key}}
   }
 }
 
-### 4. Test JSON endpoint
-GET {{proxy_api}}/json-test/json
+### 6. Test JSON endpoint with POST data
+POST {{proxy_api}}/json-test
+Content-Type: application/json
 
-### 5. Test with a different external API that might return non-200
+{
+  "user": "test",
+  "action": "login",
+  "timestamp": "2025-01-01T00:00:00Z"
+}
+
+### 7. Test with external API that returns error
 PUT {{admin_api}}/routes/error-test
 Content-Type: application/json
 X-API-KEY: {{admin_key}}
@@ -80,7 +119,8 @@ X-API-KEY: {{admin_key}}
     "response-transformer": {
       "external_api_url": "https://httpbin.org/status/404",
       "timeout": 5000,
-      "method": "POST"
+      "method": "POST",
+      "mode": "notify"
     },
     "proxy-rewrite": {
       "uri": "/get"
@@ -94,14 +134,42 @@ X-API-KEY: {{admin_key}}
   }
 }
 
-### 6. Test error scenario - external API returns 404
-GET {{proxy_api}}/error-test/get
+### 8. Test error scenario - external API returns 404 but continues with upstream
+GET {{proxy_api}}/error-test
 
-### 7. View Route Configuration
+### 9. View Route Configuration
 GET {{admin_api}}/routes/response-transform-test
 X-API-KEY: {{admin_key}}
 
-### 8. Delete Test Routes (cleanup)
+### 10. Test with GET method to external API
+PUT {{admin_api}}/routes/get-test
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/get-test",
+  "plugins": {
+    "response-transformer": {
+      "external_api_url": "https://httpbin.org/get",
+      "timeout": 5000,
+      "method": "GET",
+      "mode": "replace"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 11. Test GET method to external API
+GET {{proxy_api}}/get-test
+Authorization: Bearer test-token
+X-Request-ID: test-456
+
+### 12. Delete Test Routes (cleanup)
 DELETE {{admin_api}}/routes/response-transform-test
 X-API-KEY: {{admin_key}}
 
@@ -111,4 +179,8 @@ X-API-KEY: {{admin_key}}
 
 ###
 DELETE {{admin_api}}/routes/error-test
+X-API-KEY: {{admin_key}}
+
+###
+DELETE {{admin_api}}/routes/get-test
 X-API-KEY: {{admin_key}} 
