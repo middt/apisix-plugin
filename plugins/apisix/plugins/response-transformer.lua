@@ -53,6 +53,36 @@ local schema = {
             enum = {"notify", "replace"},
             default = "notify",
             description = "notify: call external API and continue with upstream, replace: skip upstream and return external API response"
+        },
+        header_config = {
+            type = "array",
+            items = {
+                type = "object",
+                properties = {
+                    name = {
+                        type = "string",
+                        description = "Name of the header to set"
+                    },
+                    mode = {
+                        type = "string",
+                        enum = {"replace", "notify", "empty"},
+                        default = "replace",
+                        description = "Header setting mode: replace (always set), notify (set on success), empty (set on failure)"
+                    },
+                    success_value = {
+                        type = "string",
+                        default = "true",
+                        description = "Header value to set on successful external API call"
+                    },
+                    failure_value = {
+                        type = "string",
+                        default = "false",
+                        description = "Header value to set on failed external API call"
+                    }
+                },
+                required = {"name"}
+            },
+            description = "Array of header configurations for response header management"
         }
     },
     required = {"external_api_url"}
@@ -75,6 +105,29 @@ function _M.access(conf, ctx)
     
     -- Make external API call in access phase
     local success, response_body = call_external_api(conf, ctx)
+    
+    -- Handle header setting based on configuration
+    local header_configs = conf.header_config or {}
+    
+    -- Set headers based on configuration array
+    for _, header_config in ipairs(header_configs) do
+        local header_name = header_config.name
+        local header_mode = header_config.mode or "replace"
+        local success_value = header_config.success_value or "true"
+        local failure_value = header_config.failure_value or "false"
+        
+        -- Set header based on mode and success/failure
+        if header_mode == "replace" then
+            -- Always set header regardless of external API result
+            ngx.header[header_name] = success and success_value or failure_value
+        elseif header_mode == "notify" and success then
+            -- Only set header on successful external API call
+            ngx.header[header_name] = success_value
+        elseif header_mode == "empty" and not success then
+            -- Only set header on failed external API call
+            ngx.header[header_name] = failure_value
+        end
+    end
     
     if conf.mode == "replace" and success then
         -- Skip upstream and return external API response

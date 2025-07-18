@@ -23,7 +23,21 @@ X-API-KEY: {{admin_key}}
       "timeout": 10000,
       "method": "POST",
       "mode": "notify",
-      "forward_headers": ["Authorization", "X-Request-ID"]
+      "forward_headers": ["Authorization", "X-Request-ID"],
+      "header_config": [
+        {
+          "name": "X-Transform-Status",
+          "mode": "replace",
+          "success_value": "processed",
+          "failure_value": "error"
+        },
+        {
+          "name": "X-Processing-Time",
+          "mode": "notify",
+          "success_value": "fast",
+          "failure_value": "slow"
+        }
+      ]
     },
     "proxy-rewrite": {
       "uri": "/get"
@@ -37,14 +51,230 @@ X-API-KEY: {{admin_key}}
   }
 }
 
-### 2. Test the Route - Notify Mode
+### 2. Test the Route - Notify Mode with Replace Header Mode
 # Send a GET request to the route. The plugin will call the external API
 # and then continue with the normal upstream request
+# Header should be set regardless of success/failure (replace mode)
 GET {{proxy_api}}/transform-test
 Authorization: Bearer test-token
 X-Request-ID: test-123
 
-### 3. Update Route to Replace Mode
+### 3. Test Header Config - Notify Mode (only set on success)
+PUT {{admin_api}}/routes/header-notify-test
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/header-notify-test",
+  "plugins": {
+    "response-transformer": {
+      "external_api_url": "https://httpbin.org/post",
+      "timeout": 10000,
+      "method": "POST",
+      "mode": "notify",
+      "header_config": [
+        {
+          "name": "X-API-Success",
+          "mode": "notify",
+          "success_value": "yes",
+          "failure_value": "no"
+        }
+      ]
+    },
+    "proxy-rewrite": {
+      "uri": "/get"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 4. Test Header Notify Mode - Success Case
+# Header should only be set when external API call succeeds
+GET {{proxy_api}}/header-notify-test
+
+### 5. Test Header Config - Empty Mode (only set on failure)
+PUT {{admin_api}}/routes/header-empty-test
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/header-empty-test",
+  "plugins": {
+    "response-transformer": {
+      "external_api_url": "https://httpbin.org/status/500",
+      "timeout": 10000,
+      "method": "POST",
+      "mode": "notify",
+      "header_config": [
+        {
+          "name": "X-API-Error",
+          "mode": "empty",
+          "success_value": "none",
+          "failure_value": "external_api_failed"
+        }
+      ]
+    },
+    "proxy-rewrite": {
+      "uri": "/get"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 6. Test Header Empty Mode - Failure Case
+# Header should only be set when external API call fails
+GET {{proxy_api}}/header-empty-test
+
+### 7. Test with Custom Header Name and Values
+PUT {{admin_api}}/routes/custom-header-test
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/custom-header-test",
+  "plugins": {
+    "response-transformer": {
+      "external_api_url": "https://httpbin.org/post",
+      "timeout": 5000,
+      "method": "POST",
+      "mode": "replace",
+      "header_config": [
+        {
+          "name": "X-Custom-Processing",
+          "mode": "replace",
+          "success_value": "completed_successfully",
+          "failure_value": "processing_failed"
+        }
+      ]
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 8. Test Custom Header in Replace Mode
+# Plugin will skip upstream and return external API response with custom header
+GET {{proxy_api}}/custom-header-test
+
+### 8b. Test Multiple Headers with Different Modes
+PUT {{admin_api}}/routes/multi-header-test
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/multi-header-test",
+  "plugins": {
+    "response-transformer": {
+      "external_api_url": "https://httpbin.org/post",
+      "timeout": 5000,
+      "method": "POST",
+      "mode": "notify",
+      "header_config": [
+        {
+          "name": "X-Status",
+          "mode": "replace",
+          "success_value": "ok",
+          "failure_value": "failed"
+        },
+        {
+          "name": "X-Success-Only",
+          "mode": "notify",
+          "success_value": "external_api_succeeded"
+        },
+        {
+          "name": "X-Error-Only", 
+          "mode": "empty",
+          "failure_value": "external_api_error"
+        },
+        {
+          "name": "X-Processing-Info",
+          "mode": "replace",
+          "success_value": "data_processed",
+          "failure_value": "processing_skipped"
+        }
+      ]
+    },
+    "proxy-rewrite": {
+      "uri": "/get"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 8c. Test Multiple Headers - Success Case
+# Should set: X-Status=ok, X-Success-Only=external_api_succeeded, X-Processing-Info=data_processed
+# Should NOT set: X-Error-Only (empty mode, only sets on failure)
+GET {{proxy_api}}/multi-header-test
+
+### 8d. Test Multiple Headers - Failure Case
+PUT {{admin_api}}/routes/multi-header-fail-test
+Content-Type: application/json
+X-API-KEY: {{admin_key}}
+
+{
+  "uri": "/multi-header-fail-test",
+  "plugins": {
+    "response-transformer": {
+      "external_api_url": "https://httpbin.org/status/500",
+      "timeout": 5000,
+      "method": "POST",
+      "mode": "notify",
+      "header_config": [
+        {
+          "name": "X-Status",
+          "mode": "replace",
+          "success_value": "ok",
+          "failure_value": "failed"
+        },
+        {
+          "name": "X-Success-Only",
+          "mode": "notify",
+          "success_value": "external_api_succeeded"
+        },
+        {
+          "name": "X-Error-Only", 
+          "mode": "empty",
+          "failure_value": "external_api_error"
+        }
+      ]
+    },
+    "proxy-rewrite": {
+      "uri": "/get"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  }
+}
+
+### 8e. Test Multiple Headers - Failure Case
+# Should set: X-Status=failed, X-Error-Only=external_api_error
+# Should NOT set: X-Success-Only (notify mode, only sets on success)
+GET {{proxy_api}}/multi-header-fail-test
+
+### 9. Update Route to Replace Mode
 # In replace mode, the plugin skips the upstream and returns the external API response
 PUT {{admin_api}}/routes/response-transform-test
 Content-Type: application/json
@@ -58,7 +288,15 @@ X-API-KEY: {{admin_key}}
       "timeout": 10000,
       "method": "POST",
       "mode": "replace",
-      "forward_headers": ["Authorization", "X-Request-ID"]
+      "forward_headers": ["Authorization", "X-Request-ID"],
+      "header_config": [
+        {
+          "name": "IsEncrpt",
+          "mode": "replace",
+          "success_value": "true",
+          "failure_value": "false"
+        }
+      ]
     }
   },
   "upstream": {
@@ -69,13 +307,13 @@ X-API-KEY: {{admin_key}}
   }
 }
 
-### 4. Test the Route - Replace Mode
+### 10. Test the Route - Replace Mode
 # The plugin will skip the upstream and return the external API response directly
 GET {{proxy_api}}/transform-test
 Authorization: Bearer test-token
 X-Request-ID: test-123
 
-### 5. Create JSON Test Route with POST request
+### 11. Create JSON Test Route with POST request
 PUT {{admin_api}}/routes/json-test
 Content-Type: application/json
 X-API-KEY: {{admin_key}}
@@ -98,7 +336,7 @@ X-API-KEY: {{admin_key}}
   }
 }
 
-### 6. Test JSON endpoint with POST data
+### 12. Test JSON endpoint with POST data
 POST {{proxy_api}}/json-test
 Content-Type: application/json
 
@@ -108,7 +346,7 @@ Content-Type: application/json
   "timestamp": "2025-01-01T00:00:00Z"
 }
 
-### 7. Test with external API that returns error
+### 13. Test with external API that returns error
 PUT {{admin_api}}/routes/error-test
 Content-Type: application/json
 X-API-KEY: {{admin_key}}
@@ -120,7 +358,15 @@ X-API-KEY: {{admin_key}}
       "external_api_url": "https://httpbin.org/status/404",
       "timeout": 5000,
       "method": "POST",
-      "mode": "notify"
+      "mode": "notify",
+      "header_config": [
+        {
+          "name": "X-External-Status",
+          "mode": "replace",
+          "success_value": "ok",
+          "failure_value": "failed"
+        }
+      ]
     },
     "proxy-rewrite": {
       "uri": "/get"
@@ -134,14 +380,15 @@ X-API-KEY: {{admin_key}}
   }
 }
 
-### 8. Test error scenario - external API returns 404 but continues with upstream
+### 14. Test error scenario - external API returns 404 but continues with upstream
+# Header should be set to failure value due to replace mode
 GET {{proxy_api}}/error-test
 
-### 9. View Route Configuration
+### 15. View Route Configuration
 GET {{admin_api}}/routes/response-transform-test
 X-API-KEY: {{admin_key}}
 
-### 10. Test with GET method to external API
+### 16. Test with GET method to external API
 PUT {{admin_api}}/routes/get-test
 Content-Type: application/json
 X-API-KEY: {{admin_key}}
@@ -164,12 +411,12 @@ X-API-KEY: {{admin_key}}
   }
 }
 
-### 11. Test GET method to external API
+### 17. Test GET method to external API
 GET {{proxy_api}}/get-test
 Authorization: Bearer test-token
 X-Request-ID: test-456
 
-### 12. Delete Test Routes (cleanup)
+### 18. Delete Test Routes (cleanup)
 DELETE {{admin_api}}/routes/response-transform-test
 X-API-KEY: {{admin_key}}
 
@@ -183,4 +430,24 @@ X-API-KEY: {{admin_key}}
 
 ###
 DELETE {{admin_api}}/routes/get-test
+X-API-KEY: {{admin_key}}
+
+###
+DELETE {{admin_api}}/routes/header-notify-test
+X-API-KEY: {{admin_key}}
+
+###
+DELETE {{admin_api}}/routes/header-empty-test
+X-API-KEY: {{admin_key}}
+
+###
+DELETE {{admin_api}}/routes/custom-header-test
+X-API-KEY: {{admin_key}}
+
+###
+DELETE {{admin_api}}/routes/multi-header-test
+X-API-KEY: {{admin_key}}
+
+###
+DELETE {{admin_api}}/routes/multi-header-fail-test
 X-API-KEY: {{admin_key}} 
