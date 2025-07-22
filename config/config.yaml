@@ -20,9 +20,23 @@ apisix:
   node_listen: 9080              # APISIX listening port
   enable_ipv6: false
   config_center: etcd # Using etcd for configuration
+  enable_debug: true             # Enable debug mode for detailed logging
+  enable_dev_mode: true          # Enable development mode
   admin_listen:
     ip: 0.0.0.0
     port: 9180
+
+# Logging configuration for debugging
+nginx_config:
+  error_log: "/usr/local/apisix/logs/error.log"
+  error_log_level: "debug"          # Can be: debug, info, notice, warn, error, crit
+  access_log: "/usr/local/apisix/logs/access.log"
+  access_log_format: '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" $request_time $upstream_response_time "$upstream_addr" "$upstream_status" "$request_id"'
+  access_log_format_escape: default
+
+# External plugin configuration for Go plugin runner  
+ext-plugin:
+  path_for_test: /tmp/runner.sock
 
 plugins:
   - api-breaker
@@ -33,8 +47,8 @@ plugins:
   - cors
   # - dubbo-proxy
   - echo
-  # - custom-header
-  # - error-log-logger
+  - custom-header
+  - error-log-logger
   # - example-plugin
   - fault-injection
   - grpc-transcode
@@ -47,8 +61,8 @@ plugins:
   - limit-conn
   - limit-count
   - limit-req
-  # - log-rotate
-  # - node-status
+  - log-rotate
+  - node-status
   - openid-connect
   - prometheus
   - proxy-cache
@@ -61,7 +75,7 @@ plugins:
   - response-rewrite
   - serverless-post-function
   - serverless-pre-function
-  # - skywalking
+  - skywalking
   - sls-logger
   - syslog
   - tcp-logger
@@ -71,11 +85,18 @@ plugins:
   - zipkin
   - server-info
   - traffic-split
-  # custom
+  # External plugins (Go Plugin Runner)
+  - ext-plugin-pre-req
+  - ext-plugin-post-req
+  - ext-plugin-post-resp
+  # Custom Lua plugins (kept for reference)
   - hello-world
   - response-transformer
   
 plugin_attr:
+  upstream-response-transformer:
+    # Enable both header_filter and body_filter phases
+    phase: [ "header_filter", "body_filter" ]
   opentelemetry:
     # trace_id_source: x-instance-id - Source of the trace ID. Valid values are random or x-request-id. When set to x-request-id, the value of the x-request-id header will be used as trace ID. Make sure that it matches the regex pattern [0-9a-f]{32}.
     resource:
