@@ -14,7 +14,7 @@ services:
     restart: always
     volumes:
       - ./config/config.yaml:/usr/local/apisix/conf/config.yaml:ro
-      - ./plugins:/usr/local/apisix/plugins:ro
+      - ./plugins/apisix/plugins:/usr/local/apisix/plugins:ro
       - ./logs:/usr/local/apisix/logs
       - /tmp:/tmp
     depends_on:
@@ -27,7 +27,7 @@ services:
 
   go-plugin-runner:
     build:
-      context: .
+      context: ./go-plugin-runner
       dockerfile: Dockerfile.go-plugin
     restart: always
     volumes:
