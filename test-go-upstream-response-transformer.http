@@ -1,0 +1,117 @@
+### Test for Go upstream-response-transformer plugin
+
+# Base URL for APISIX Admin API
+@admin_api = http://localhost:9180/apisix/admin
+# Base URL for APISIX Proxy
+@proxy_api = http://localhost:9080
+# Admin API Key (from conf/config.yaml)
+@admin_key = edd1c9f034335f136f87ad84b625c8f1
+
+### 1. Create a route with Go upstream-response-transformer plugin (notify mode)
+PUT  {{admin_api}}/routes/1
+X-API-KEY: {{admin_key}}
+Content-Type: application/json
+
+{
+  "uri": "/test-go-upstream-notify",
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  },
+  "plugins": {
+    "proxy-rewrite": {
+      "uri": "/get"
+    },
+    "ext-plugin-post-resp": {
+      "conf": [
+        {
+          "name": "upstream-response-transformer",
+          "value": "{\"external_api_url\":\"https://httpbin.dev/dump/request?foo=bar\",\"timeout\":10000,\"forward_headers\":[\"User-Agent\",\"X-Custom-Header\"],\"method\":\"GET\",\"mode\":\"notify\",\"response_headers\":[{\"name\":\"X-External-API-Status\",\"mode\":\"replace\",\"success_value\":\"success\",\"failure_value\":\"failed\"},{\"name\":\"X-Notify-Header\",\"mode\":\"notify\",\"success_value\":\"notified\"}]}"
+        }
+      ]
+    }
+  }
+}
+
+### 2. Test the notify mode route (response should remain unchanged, external API called)
+GET {{proxy_api}}/test-go-upstream-notify
+User-Agent: TestClient/1.0
+X-Custom-Header: test-value
+
+### 3. Create a route with Go upstream-response-transformer plugin (replace mode)
+PUT {{admin_api}}/routes/2
+X-API-KEY: {{admin_key}}
+Content-Type: application/json
+
+{
+  "uri": "/test-go-upstream-replace",
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  },
+  "plugins": {
+    "proxy-rewrite": {
+      "uri": "/get"
+    },
+    "ext-plugin-post-resp": {
+      "conf": [
+        {
+          "name": "upstream-response-transformer",
+          "value": "{\"external_api_url\":\"https://httpbin.dev/dump/request?foo=bar\",\"timeout\":10000,\"forward_headers\":[\"User-Agent\",\"X-Custom-Header\"],\"method\":\"GET\",\"mode\":\"replace\",\"response_headers\":[{\"name\":\"X-Response-Modified\",\"mode\":\"replace\",\"success_value\":\"true\",\"failure_value\":\"false\"}]}"
+        }
+      ]
+    }
+  }
+}
+
+### 4. Test the replace mode route (response should be replaced with external API response)
+GET {{proxy_api}}/test-go-upstream-replace
+User-Agent: TestClient/1.0
+X-Custom-Header: test-value
+
+### 5. Create a route with a failing external API (to test failure handling)
+PUT {{admin_api}}/routes/3
+X-API-KEY: {{admin_key}}
+Content-Type: application/json
+
+{
+  "uri": "/test-go-upstream-fail",
+  "upstream": {
+    "type": "roundrobin",
+    "nodes": {
+      "httpbin.org:80": 1
+    }
+  },
+  "plugins": {
+    "proxy-rewrite": {
+      "uri": "/get"
+    },
+    "ext-plugin-post-resp": {
+      "conf": [
+        {
+          "name": "upstream-response-transformer",
+          "value": "{\"external_api_url\":\"https://httpbin.dev/status/500\",\"timeout\":5000,\"method\":\"GET\",\"mode\":\"replace\",\"response_headers\":[{\"name\":\"X-External-API-Status\",\"mode\":\"replace\",\"success_value\":\"success\",\"failure_value\":\"failed\"},{\"name\":\"X-Error-Header\",\"mode\":\"empty\",\"failure_value\":\"external-api-error\"}]}"
+        }
+      ]
+    }
+  }
+}
+
+### 6. Test the failing external API route (should keep original response and set failure headers)
+GET {{proxy_api}}/test-go-upstream-fail
+
+### 7. Delete test routes
+DELETE {{admin_api}}/routes/1
+X-API-KEY: {{admin_key}}
+
+###
+DELETE {{admin_api}}/routes/2
+X-API-KEY: {{admin_key}}
+
+###
+DELETE {{admin_api}}/routes/3
+X-API-KEY: {{admin_key}} 
