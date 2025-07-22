@@ -11,7 +11,7 @@ logs/
 *.dll
 *.so
 *.dylib
-go-plugin-runner
+#go-plugin-runner
 
 # IDE/Editor files
 .vscode/

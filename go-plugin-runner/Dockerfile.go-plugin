@@ -1,0 +1,33 @@
+FROM golang:1.21-alpine AS builder
+
+# Install git (required for go mod download)
+RUN apk add --no-cache git
+
+WORKDIR /app
+
+# Copy go mod file
+COPY go.mod go.sum* ./
+RUN go mod download
+
+# Copy source code
+COPY main.go ./
+COPY plugins/ ./plugins/
+
+# Ensure all dependencies are properly resolved
+RUN go mod tidy
+
+# Build the plugin
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o go-plugin-runner .
+
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
+
+# Copy the binary from builder
+COPY --from=builder /app/go-plugin-runner /usr/local/bin/go-plugin-runner
+
+# Make it executable
+RUN chmod +x /usr/local/bin/go-plugin-runner
+
+CMD ["/usr/local/bin/go-plugin-runner"] 
