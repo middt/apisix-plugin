@@ -104,7 +104,59 @@ Content-Type: application/json
 ### 6. Test the failing external API route (should keep original response and set failure headers)
 GET {{proxy_api}}/test-go-upstream-fail
 
-### 7. Delete test routes
+### 7. Create a route with Go upstream-response-transformer plugin (replace mode)
+PUT {{admin_api}}/routes/routes/response-transform-test
+X-API-KEY: {{admin_key}}
+Content-Type: application/json
+
+{
+    "uri": "/transform-test-new",
+    "plugins": {
+        "ext-plugin-post-resp": {
+            "conf": [
+                {
+                    "name": "upstream-response-transformer",
+                    "value": "{\n            \"external_api_url\": \"http://host.docker.internal:5111/transactions/v2\",\n            \"timeout\": 50000,\n            \"forward_headers\": [\"X-Request-Id\", \"X-Device-Id\", \"X-Installation-Id\", \"user_reference\"],\n            \"mode\": \"replace\",\n\"preserve_content_type\": false,\n            \"method\": \"POST\",\n            \"response_headers\": [\n              {\n                \"name\": \"X-Encrpt\",\n                \"mode\": \"replace\",\n                \"success_value\": \"true\",\n                \"failure_value\": \"false\"\n              }\n            ]\n          }"
+                }
+            ]
+        },
+        "ext-plugin-pre-req": {
+            "allow_degradation": false,
+            "conf": [
+                {
+                    "name": "upstream-response-transformer",
+                    "value": "{\"forward_headers\": [\"X-Request-Id\", \"X-Device-Id\", \"X-Installation-Id\", \"user_reference\", \"Authorization\"]}"
+                }
+            ]
+        },
+        "response-rewrite": {
+            "headers": {
+                "set": {
+                    "Content-Type": "application/json"
+                }
+            }
+        },
+        "proxy-rewrite": {
+            "uri": "/get"
+        }
+    },
+    "upstream": {
+        "type": "roundrobin",
+        "nodes": {
+            "httpbin.org:80": 1
+        }
+    }
+}
+
+### 7. Test the replace mode route (response should be replaced with external API response)
+GET {{proxy_api}}/transform-test-new
+Authorization: Bearer 1234567890
+X-Request-Id: 5480828E-F0C7-4D07-B494-883F00C1662C
+X-Device-Id: b76018f7b70f2527
+X-Installation-Id: 3fd23810662511f09af409f15691a089
+user_reference: 29699191264
+
+### 8. Delete test routes
 DELETE {{admin_api}}/routes/1
 X-API-KEY: {{admin_key}}
 

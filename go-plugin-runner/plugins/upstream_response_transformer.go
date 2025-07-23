@@ -3,6 +3,7 @@ package plugins
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -52,7 +53,7 @@ type ResponseHeader struct {
 
 type ExternalAPIPayload struct {
 	UpstreamStatus  int               `json:"upstream_status"`
-	UpstreamHeaders map[string]string `json:"upstream_headers"`
+	Headers         map[string]string `json:"headers"`
 	UpstreamBody    string            `json:"upstream_body"`
 	RequestURI      string            `json:"request_uri"`
 	RequestMethod   string            `json:"request_method"`
@@ -155,9 +156,14 @@ func getClientIP(r pkgHTTP.Request) string {
 }
 
 func getRequestURI(r pkgHTTP.Request) string {
-	// For now, use a simple fallback since v0.5.0 API doesn't have direct URL access
-	// This will be populated correctly when the request info is used
-	return "request-uri-from-filter"
+	path := string(r.Path())         // []byte → string
+	args := r.Args()                 // url.Values tipinde
+	query := args.Encode()           // url.Values → string
+
+	if query != "" {
+		return path + "?" + query
+	}
+	return path
 }
 
 func (p *UpstreamResponseTransformer) ResponseFilter(conf interface{}, w pkgHTTP.Response) {
@@ -196,14 +202,21 @@ func (p *UpstreamResponseTransformer) ResponseFilter(conf interface{}, w pkgHTTP
 	} else {
 		log.Infof("ResponseFilter: Found request data with %d forward headers", len(requestData.Headers))
 	}
+
+	// For replace mode, read body and proceed with replacement logic
+	body, err := w.ReadBody()
+	if err != nil {
+		log.Errorf("Failed to read upstream response body: %v", err)
+		return
+	}
 	
 	// For notify mode, do external API call without reading response body first
 	if config.Mode == "notify" {
-		// Prepare external API payload without upstream response body for notify mode
+		// Prepare external API payload with original request headers for notify mode
 		payload := ExternalAPIPayload{
 			UpstreamStatus:  w.StatusCode(),
-			UpstreamHeaders: p.convertHeaders(w.Header()),
-			UpstreamBody:    "", // Don't read body in notify mode
+			Headers:         requestData.Headers, // Use original request headers
+			UpstreamBody:    base64.StdEncoding.EncodeToString(body), //string(body),
 			RequestURI:      requestData.URI,
 			RequestMethod:   requestData.Method,
 			ClientIP:        requestData.IP,
@@ -223,18 +236,11 @@ func (p *UpstreamResponseTransformer) ResponseFilter(conf interface{}, w pkgHTTP
 		return
 	}
 	
-	// For replace mode, read body and proceed with replacement logic
-	body, err := w.ReadBody()
-	if err != nil {
-		log.Errorf("Failed to read upstream response body: %v", err)
-		return
-	}
-	
-	// Prepare external API payload with real request info
+	// Prepare external API payload with original request headers
 	payload := ExternalAPIPayload{
 		UpstreamStatus:  w.StatusCode(),
-		UpstreamHeaders: p.convertHeaders(w.Header()),
-		UpstreamBody:    string(body),
+		Headers:         requestData.Headers, // Use original request headers
+		UpstreamBody:    base64.StdEncoding.EncodeToString(body),
 		RequestURI:      requestData.URI,
 		RequestMethod:   requestData.Method,
 		ClientIP:        requestData.IP,
@@ -348,24 +354,27 @@ func (p *UpstreamResponseTransformer) detectContentType(body []byte) string {
 func (p *UpstreamResponseTransformer) convertHeaders(headers pkgHTTP.Header) map[string]string {
 	result := make(map[string]string)
 	
-	// APISIX Go Plugin v0.5.0+ API için header iteration
-	// Header interface'ini kullanarak header'ları iterate ediyoruz
-	headerKeys := []string{
-		"Content-Type", "Content-Length", "Content-Encoding",
-		"Cache-Control", "ETag", "Last-Modified", "Expires", 
-		"Access-Control-Allow-Origin", "Access-Control-Allow-Credentials",
-		"Transfer-Encoding", "Vary", "Set-Cookie", "Server",
-		"X-Powered-By", "X-Frame-Options", "X-Content-Type-Options",
+	// Common headers to capture (since we can't iterate over all headers)
+	commonHeaders := []string{
+		"Content-Type", "Content-Length", "Content-Encoding", "Content-Disposition",
+		"Cache-Control", "Expires", "Last-Modified", "ETag",
+		"Location", "Set-Cookie", "Authorization", "Accept", "Accept-Encoding", "Accept-Language",
+		"User-Agent", "Host", "X-Forwarded-For", "X-Real-IP", "X-Request-ID",
+		"Access-Control-Allow-Origin", "Access-Control-Allow-Methods", "Access-Control-Allow-Headers",
+		"Server", "Date", "Connection", "Transfer-Encoding",
+		"X-Device-Id", "X-Installation-Id", "X-Request-Id", "user_reference", "X-Workflow-Name",
 	}
 	
-	// Bilinen header'ları kontrol et
-	for _, key := range headerKeys {
-		if value := headers.Get(key); value != "" {
-			result[key] = value
+	// Capture common headers
+	for _, headerName := range commonHeaders {
+		headerValue := headers.Get(headerName)
+		if headerValue != "" {
+			result[headerName] = headerValue
+			log.Infof("convertHeaders: Captured header [%s] = %s", headerName, headerValue)
 		}
 	}
 	
-	log.Infof("convertHeaders: Converted %d headers from upstream response", len(result))
+	log.Infof("convertHeaders: Captured %d headers from common header list", len(result))
 	return result
 }
 
