@@ -40,6 +40,9 @@ This directory provides a Docker Compose setup for developing and testing custom
     -   APISIX will be accessible on `http://localhost:9080` (proxy) and `http://localhost:9180` (Admin API).
     -   The APISIX Dashboard will be available at `http://localhost:9000`.
 
+    *go-plugin-runner* build:
+    `docker-compose up --build go-plugin-runner -d`
+
 3.  **Test your plugin with path rewriting:**
     -   Use the APISIX Admin API to create a route that combines the hello-world plugin with the proxy-rewrite plugin:
 
