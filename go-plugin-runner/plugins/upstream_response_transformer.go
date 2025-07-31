@@ -401,6 +401,7 @@ func (p *UpstreamResponseTransformer) callExternalAPI(config Config, payload Ext
 	// Set default headers
 	req.Header.Set("Content-Type", config.ContentType)
 	req.Header.Set("User-Agent", "APISIX-Go-Plugin/1.0")
+	req.Header.Set("X-Plugin-Mode", config.Mode) // Add mode status to headers
 	
 	// Add forward headers from original request
 	for headerName, headerValue := range forwardHeaders {
@@ -408,8 +409,8 @@ func (p *UpstreamResponseTransformer) callExternalAPI(config Config, payload Ext
 		log.Infof("External API: Added forward header %s: %s", headerName, headerValue)
 	}
 	
-	log.Infof("External API: Making %s request to %s with Content-Type: %s and %d forward headers", 
-		config.Method, config.ExternalAPIURL, config.ContentType, len(forwardHeaders))
+	log.Infof("External API: Making %s request to %s with Content-Type: %s, Mode: %s and %d forward headers", 
+		config.Method, config.ExternalAPIURL, config.ContentType, config.Mode, len(forwardHeaders))
 	
 	// Make the request
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.Timeout)*time.Millisecond)
